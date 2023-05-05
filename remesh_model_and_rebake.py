@@ -1,9 +1,10 @@
 import bpy
 
+
 input_path = 'D:\\Game Development\\Models\\Gray Alien\\Gray_final_animations_Baked.fbx'
 output_path = 'C:\\Users\\Kylec\\Downloads\\alien\\alien.glb'
 output_image_dir = 'C:\\Users\\Kylec\\Downloads\\alien'
-voxel_size = 0.1
+voxel_size = 0.05
 uv_angle_limit = 66
 uv_island_margin = 0.03
 use_smooth_shade = True
@@ -157,6 +158,11 @@ for i in range(len(low_res_models)):
 
 # Bake the texture
 for i in range(len(low_res_models)):
+    # Hide everything not being rendered
+    for j in range(len(low_res_models)):
+        low_res_models[j].hide_render = j != i
+        high_res_models[i].hide_render = j != i
+    
     high = high_res_models[i]
     low = low_res_models[i]
     bpy.context.scene.render.engine = 'CYCLES'
@@ -170,11 +176,11 @@ for i in range(len(low_res_models)):
     # TODO: Add roughness
     mat.node_tree.nodes.active = mat.node_tree.nodes.get('diffuse')
     mat.node_tree.nodes.get('diffuse').select = True
-    bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, cage_extrusion=0.1, margin=32, pass_filter={'COLOR'})
+    bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, cage_extrusion=0.2, margin=32, pass_filter={'COLOR'})
     mat.node_tree.nodes.get('diffuse').select = False
     mat.node_tree.nodes.active = mat.node_tree.nodes.get('normal')
     mat.node_tree.nodes.get('normal').select = True
-    bpy.ops.object.bake(type='NORMAL', use_selected_to_active=True, cage_extrusion=0.1, margin=32)
+    bpy.ops.object.bake(type='NORMAL', use_selected_to_active=True, cage_extrusion=0.2, margin=32)
     mat.node_tree.nodes.get('normal').select = False
     bpy.context.scene.render.engine = original_render_engine
     bpy.data.images["diffuse_" + low.name + ".png"].save_render(output_image_dir + "/diffuse_" + low.name + ".png")
