@@ -4,11 +4,30 @@ import bpy
 input_path = 'D:\\Game Development\\Models\\Gray Alien\\Gray_final_animations_Baked.fbx'
 output_path = 'C:\\Users\\Kylec\\Downloads\\alien\\alien.glb'
 output_image_dir = 'C:\\Users\\Kylec\\Downloads\\alien'
+
+# Remeshing
+# Remesh type = decimate or voxel
+remesh_type = 'decimate'
+# If voxel remesh is used
 voxel_size = 0.05
+# If decimate is used
+decimation_ratio = 0.1
+
+# UVs
 uv_angle_limit = 66
 uv_island_margin = 0.03
+
+# Shade smooth
 use_smooth_shade = True
 shade_smooth_angle = 60
+
+# Baking
+extrusion = 0.2
+margin = 32
+texture_size = 2048
+
+#### DO NOT MODIFY BELOW
+
 
 # Helper functions
 def set_mode(mode):
@@ -70,6 +89,29 @@ def shade_smooth(obj):
     obj.data.use_auto_smooth = True
     obj.data.auto_smooth_angle = shade_smooth_angle
 
+def decimate(obj, ratio):
+    set_active(obj)
+    bpy.ops.object.modifier_add(type='DECIMATE')
+    bpy.context.object.modifiers["Decimate"].ratio = ratio
+    bpy.ops.object.modifier_apply(modifier="Decimate")
+
+def voxel_remesh(obj, voxel_size, smooth_shade):
+    set_active(obj)
+    bpy.ops.object.modifier_add(type="REMESH")
+    bpy.context.object.modifiers["Remesh"].use_remove_disconnected = False
+    bpy.context.object.modifiers["Remesh"].voxel_size = voxel_size
+    bpy.context.object.modifiers["Remesh"].use_smooth_shade = smooth_shade
+    bpy.ops.object.modifier_apply(modifier="Remesh")
+
+def smart_uv(obj, angle_limit, island_margin):
+    deselect_all()
+    select(obj)
+    set_active(obj)
+    set_mode('EDIT')
+    select_all_mesh()
+    bpy.ops.uv.smart_project(angle_limit=angle_limit, island_margin=island_margin)
+    set_mode('OBJECT')
+
 # Set up scene
 set_mode('OBJECT')
 select_all()
@@ -107,27 +149,18 @@ for high_res_model in high_res_models:
 
 # Use the voxel retopology to reduce the polycount of the low res models
 for low_res_model in low_res_models:
-    set_active(low_res_model)
-    bpy.ops.object.modifier_add(type="REMESH")
-    bpy.context.object.modifiers["Remesh"].use_remove_disconnected = False
-    bpy.context.object.modifiers["Remesh"].voxel_size = voxel_size
-    bpy.context.object.modifiers["Remesh"].use_smooth_shade = use_smooth_shade
-    bpy.ops.object.modifier_apply(modifier="Remesh")
-    
+    if remesh_type == 'voxel':
+        voxel_remesh(low_res_model, voxel_size, use_smooth_shade)
+    else:
+        decimate(low_res_model, decimation_ratio)
+        
     # Shade smooth
     if use_smooth_shade:
         shade_smooth(low_res_model)
 
 # Create smart UV projections for each low res model
 for low_res_model in low_res_models:
-    deselect_all()
-    select(low_res_model)
-    set_active(low_res_model)
-    set_mode('EDIT')
-    select_all_mesh()
-    bpy.ops.uv.smart_project(angle_limit=uv_angle_limit, island_margin=uv_island_margin)
-    set_mode('OBJECT')
-
+    smart_uv(low_res_model, uv_angle_limit, uv_island_margin)
 
 # Remove the original texture from the low res model
 for i in range(len(low_res_models)):
@@ -140,11 +173,11 @@ for i in range(len(low_res_models)):
     nodes = mat.node_tree.nodes
     
     diffuse_node = nodes.new(type='ShaderNodeTexImage')
-    diffuse_node.image = bpy.data.images.new('diffuse_' + low.name + '.png', width=2048, height=2048)
+    diffuse_node.image = bpy.data.images.new('diffuse_' + low.name + '.png', width=texture_size, height=texture_size)
     diffuse_node.name = 'diffuse'
     
     normal_node = nodes.new(type='ShaderNodeTexImage')
-    normal_node.image = bpy.data.images.new('normal_' + low.name + '.png', width=2048, height=2048)
+    normal_node.image = bpy.data.images.new('normal_' + low.name + '.png', width=texture_size, height=texture_size)
     normal_node.name = 'normal'
     
     normal_map_node = mat.node_tree.nodes.new(type='ShaderNodeNormalMap')
@@ -170,17 +203,16 @@ for i in range(len(low_res_models)):
     bpy.context.scene.cycles.samples = 5
     deselect_all()
     select(high)
-#    high.hide_render = True
     mat = low.active_material
     set_active(low)
     # TODO: Add roughness
     mat.node_tree.nodes.active = mat.node_tree.nodes.get('diffuse')
     mat.node_tree.nodes.get('diffuse').select = True
-    bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, cage_extrusion=0.2, margin=32, pass_filter={'COLOR'})
+    bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, cage_extrusion=extrusion, margin=margin, pass_filter={'COLOR'})
     mat.node_tree.nodes.get('diffuse').select = False
     mat.node_tree.nodes.active = mat.node_tree.nodes.get('normal')
     mat.node_tree.nodes.get('normal').select = True
-    bpy.ops.object.bake(type='NORMAL', use_selected_to_active=True, cage_extrusion=0.2, margin=32)
+    bpy.ops.object.bake(type='NORMAL', use_selected_to_active=True, cage_extrusion=extrusion, margin=margin)
     mat.node_tree.nodes.get('normal').select = False
     bpy.context.scene.render.engine = original_render_engine
     bpy.data.images["diffuse_" + low.name + ".png"].save_render(output_image_dir + "/diffuse_" + low.name + ".png")
