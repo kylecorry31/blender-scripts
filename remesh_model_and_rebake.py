@@ -1,17 +1,17 @@
 import bpy
 
+# TODO: Add support for quad remesh
+# TODO: Specify which textures to generate (normal, diffuse, roughness, AO, metalic)
 
+# Files
 input_path = 'D:\\Game Development\\Models\\Gray Alien\\Gray_final_animations_Baked.fbx'
 output_path = 'C:\\Users\\Kylec\\Downloads\\alien\\alien.glb'
 output_image_dir = 'C:\\Users\\Kylec\\Downloads\\alien'
 
 # Remeshing
-# Remesh type = decimate or voxel
-remesh_type = 'decimate'
-# If voxel remesh is used
+remesh_type = 'decimate' # decimate or voxel
 voxel_size = 0.05
-# If decimate is used
-decimation_ratio = 0.1
+decimation_ratio = 0.8
 
 # UVs
 uv_angle_limit = 66
@@ -205,16 +205,20 @@ for i in range(len(low_res_models)):
     select(high)
     mat = low.active_material
     set_active(low)
-    # TODO: Add roughness
+    
     mat.node_tree.nodes.active = mat.node_tree.nodes.get('diffuse')
     mat.node_tree.nodes.get('diffuse').select = True
     bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, cage_extrusion=extrusion, margin=margin, pass_filter={'COLOR'})
     mat.node_tree.nodes.get('diffuse').select = False
+    
     mat.node_tree.nodes.active = mat.node_tree.nodes.get('normal')
     mat.node_tree.nodes.get('normal').select = True
     bpy.ops.object.bake(type='NORMAL', use_selected_to_active=True, cage_extrusion=extrusion, margin=margin)
     mat.node_tree.nodes.get('normal').select = False
+    
     bpy.context.scene.render.engine = original_render_engine
+    
+    # Save textures
     bpy.data.images["diffuse_" + low.name + ".png"].save_render(output_image_dir + "/diffuse_" + low.name + ".png")
     bpy.data.images["normal_" + low.name + ".png"].save_render(output_image_dir + "/normal_" + low.name + ".png")
 
