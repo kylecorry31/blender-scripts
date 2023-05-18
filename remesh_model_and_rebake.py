@@ -112,6 +112,53 @@ def smart_uv(obj, angle_limit, island_margin):
     bpy.ops.uv.smart_project(angle_limit=angle_limit, island_margin=island_margin)
     set_mode('OBJECT')
 
+def delete(objects, should_unlink=False):
+    deselect_all()
+    if type(objects) is not list:
+        objects = [objects]
+    for obj in objects:
+        select(obj)
+        if should_unlink:
+            unlink(obj)
+    delete_selected()
+
+
+def bake(obj, source, material_node, bake_type, margin, extrusion, pass_filter=None):
+    deselect_all()
+    select(source)
+    mat = obj.active_material
+    set_active(obj)
+    
+    mat.node_tree.nodes.active = mat.node_tree.nodes.get(material_node)
+    mat.node_tree.nodes.get(material_node).select = True
+    bpy.ops.object.bake(type=bake_type, use_selected_to_active=True, cage_extrusion=extrusion, margin=margin, pass_filter=pass_filter)
+    mat.node_tree.nodes.get(material_node).select = False
+
+def export_image(image, path):
+    bpy.data.images[image].save_render(path)
+
+def hide_render(obj):
+    obj.hide_render = True
+
+def show_render(obj):
+    obj.hide_render = False
+
+def reset_material(obj, material_name):
+    obj.data.materials.clear()
+    mat = bpy.data.materials.new(name=material_name)
+    obj.data.materials.append(mat)
+    mat.use_nodes = True
+    return mat
+
+def add_image_node(obj, node_type, node_name, image_size, image_name):
+    mat = obj.active_material
+    nodes = mat.node_tree.nodes
+    node = nodes.new(type=node_type)
+    node.image = bpy.data.images.new(image_name, width=image_size, height=image_size)
+    node.name = node_name
+    return node
+
+
 # Set up scene
 set_mode('OBJECT')
 select_all()
@@ -134,11 +181,8 @@ for obj in all_high_res:
         high_res_models.append(model)
         link(model)
 
-deselect_all()
-for high_res_model in all_high_res:
-    select(high_res_model)
 
-delete_selected()
+delete(all_high_res)
 
 # Create copies of the high res models to use as low res
 low_res_models = []
@@ -165,20 +209,10 @@ for low_res_model in low_res_models:
 # Remove the original texture from the low res model
 for i in range(len(low_res_models)):
     low = low_res_models[i]
-    low.data.materials.clear()
-    mat = bpy.data.materials.new(name="NewMaterial_" + low.name)
-    low.data.materials.append(mat)
+    mat = reset_material(low, "NewMaterial_" + low.name)    
     
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    
-    diffuse_node = nodes.new(type='ShaderNodeTexImage')
-    diffuse_node.image = bpy.data.images.new('diffuse_' + low.name + '.png', width=texture_size, height=texture_size)
-    diffuse_node.name = 'diffuse'
-    
-    normal_node = nodes.new(type='ShaderNodeTexImage')
-    normal_node.image = bpy.data.images.new('normal_' + low.name + '.png', width=texture_size, height=texture_size)
-    normal_node.name = 'normal'
+    diffuse_node = add_image_node(low, 'ShaderNodeTexImage', 'diffuse', texture_size, 'diffuse_' + low.name + '.png')
+    normal_node = add_image_node(low, 'ShaderNodeTexImage', 'normal', texture_size, 'normal_' + low.name + '.png')
     
     normal_map_node = mat.node_tree.nodes.new(type='ShaderNodeNormalMap')
     normal_map_node.uv_map = 'UVMap'
@@ -193,44 +227,31 @@ for i in range(len(low_res_models)):
 for i in range(len(low_res_models)):
     # Hide everything not being rendered
     for j in range(len(low_res_models)):
-        low_res_models[j].hide_render = j != i
-        high_res_models[i].hide_render = j != i
+        if j == i:
+            show_render(low_res_models[j])
+            show_render(high_res_models[j])
+        else:
+            hide_render(low_res_models[j])
+            hide_render(high_res_models[j])
     
     high = high_res_models[i]
     low = low_res_models[i]
     bpy.context.scene.render.engine = 'CYCLES'
     bpy.context.scene.cycles.device = 'GPU'
     bpy.context.scene.cycles.samples = 5
-    deselect_all()
-    select(high)
-    mat = low.active_material
-    set_active(low)
-    
-    mat.node_tree.nodes.active = mat.node_tree.nodes.get('diffuse')
-    mat.node_tree.nodes.get('diffuse').select = True
-    bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, cage_extrusion=extrusion, margin=margin, pass_filter={'COLOR'})
-    mat.node_tree.nodes.get('diffuse').select = False
-    
-    mat.node_tree.nodes.active = mat.node_tree.nodes.get('normal')
-    mat.node_tree.nodes.get('normal').select = True
-    bpy.ops.object.bake(type='NORMAL', use_selected_to_active=True, cage_extrusion=extrusion, margin=margin)
-    mat.node_tree.nodes.get('normal').select = False
+
+    bake(low, high, 'diffuse', 'DIFFUSE', margin, extrusion, {'COLOR'})
+    bake(low, high, 'normal', 'NORMAL', margin, extrusion)
     
     bpy.context.scene.render.engine = original_render_engine
     
     # Save textures
-    bpy.data.images["diffuse_" + low.name + ".png"].save_render(output_image_dir + "/diffuse_" + low.name + ".png")
-    bpy.data.images["normal_" + low.name + ".png"].save_render(output_image_dir + "/normal_" + low.name + ".png")
+    export_image("diffuse_" + low.name + ".png", output_image_dir + "/diffuse_" + low.name + ".png")
+    export_image("normal_" + low.name + ".png", output_image_dir + "/normal_" + low.name + ".png")
 
-
-deselect_all()
 
 # Remove the high res models
-for high_res_model in high_res_models:
-    select(high_res_model)
-    unlink(high_res_model)
-
-delete_selected()
+delete(high_res_models, True)
 
 # Export
 export_model(output_path)
